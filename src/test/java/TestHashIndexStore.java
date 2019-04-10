@@ -18,7 +18,8 @@ public class TestHashIndexStore {
     @Test
     public void testHashIndexStoreOperations() throws IOException {
         final File tempFile = tempFolder.newFile();
-        HashIndexStore store = HashIndexStore.buildFrom(tempFile);
+        HashIndexStore store = new HashIndexStore(tempFile);
+        store.loadIndex();
 
         KeyTest keyTest1 = new KeyTest("key1", "hellooooooo");
         KeyTest keyTest2 = new KeyTest("key2", "goodbyeeee");
@@ -29,7 +30,8 @@ public class TestHashIndexStore {
         keyTest2.evaluate(store);
 
         // test that rebuilding an existing database in memory works
-        HashIndexStore store2 = HashIndexStore.buildFrom(tempFile);
+        HashIndexStore store2 = new HashIndexStore(tempFile);
+        store2.loadIndex();
         keyTest1.evaluate(store2);
         keyTest2.evaluate(store2);
     }

@@ -10,7 +10,8 @@ public class HashIndexDB {
         File dataFile = new File("./datafile");
         dataFile.createNewFile();
 
-        try (Store store = HashIndexStore.buildFrom(dataFile)) {
+        try (HashIndexStore store = new HashIndexStore(dataFile)) {
+            store.loadIndex();
             DBServer server = new DBServer(store);
             server.start();
         }
