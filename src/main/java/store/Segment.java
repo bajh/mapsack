@@ -2,7 +2,6 @@ package store;
 
 import java.io.*;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class Segment {
     int offset;
@@ -14,12 +13,12 @@ public class Segment {
     FileOutputStream outputStream;
     DataOutputStream writer;
 
+    // TODO: should be a distinction between segments that are readonly and segments that are being written to (the active segment)
     public Segment(File dataFile) throws IOException {
         this.reader = new RandomAccessFile(dataFile, "r");
         this.dataFile = dataFile;
         this.outputStream = new FileOutputStream(dataFile, true);
         this.writer = new DataOutputStream(outputStream);
-//        this.index = new ConcurrentHashMap<String, IndexRecord>();
     }
 
     public void load(Map<String, IndexRecord> index) throws IOException {
@@ -47,8 +46,6 @@ public class Segment {
         writer.write(value.getBytes());
         offset += 8 + key.getBytes().length;
 
-        // this needs to happen in the Store, which will own the index
-//        index.put(key, new IndexRecord(this.activeFile, valueLength, offset));
         IndexRecord record = new IndexRecord(dataFile.getName(),
                 valueLength, offset);
 
