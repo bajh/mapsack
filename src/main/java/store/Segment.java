@@ -5,20 +5,12 @@ import java.util.Map;
 
 public class Segment {
     int offset;
-
     File dataFile;
     RandomAccessFile reader;
-    // This is just needed to be able to close the file, feels like there may
-    // be a better way to do this
-    FileOutputStream outputStream;
-    DataOutputStream writer;
 
-    // TODO: should be a distinction between segments that are readonly and segments that are being written to (the active segment)
     public Segment(File dataFile) throws IOException {
         this.reader = new RandomAccessFile(dataFile, "r");
         this.dataFile = dataFile;
-        this.outputStream = new FileOutputStream(dataFile, true);
-        this.writer = new DataOutputStream(outputStream);
     }
 
     public void load(Map<String, IndexRecord> index) throws IOException {
@@ -35,23 +27,6 @@ public class Segment {
         byte[] value = new byte[record.valueLength];
         reader.readFully(value);
         return new String(value);
-    }
-
-    public IndexRecord put(String key, String value) throws IOException {
-        writer.writeInt(key.length());
-        writer.write(key.getBytes());
-        int valueLength = value.getBytes().length;
-
-        writer.writeInt(valueLength);
-        writer.write(value.getBytes());
-        offset += 8 + key.getBytes().length;
-
-        IndexRecord record = new IndexRecord(dataFile.getName(),
-                valueLength, offset);
-
-        offset += valueLength;
-
-        return record;
     }
 
     private void walk(Segment.Visitor visitor) throws IOException {
@@ -86,7 +61,6 @@ public class Segment {
 
     public void close() throws Exception {
         reader.close();
-        outputStream.close();
     }
 
     public static interface Visitor {
@@ -99,9 +73,3 @@ public class Segment {
         }
     }
 }
-
-
-
-
-
-

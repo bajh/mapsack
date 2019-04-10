@@ -10,11 +10,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class HashIndexStore implements Store, AutoCloseable {
     Map<String, IndexRecord> index;
     File dataDir;
-    Segment activeSegment;
+    ActiveSegment activeSegment;
 
     public HashIndexStore(File dataDir) throws IOException {
         this.dataDir = dataDir;
-        activeSegment = new Segment(newSegmentFile());
+        activeSegment = new ActiveSegment(newSegmentFile());
         this.index = new ConcurrentHashMap<String, IndexRecord>();
     }
 
