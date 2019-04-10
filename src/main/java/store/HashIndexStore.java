@@ -5,62 +5,41 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class HashIndexStore implements Store, AutoCloseable {
-    Map<String, Integer> index;
+    Map<String, IndexRecord> index;
+    String activeFile;
     RandomAccessFile in;
     FileOutputStream outFile;
     DataOutput out;
     int offset;
 
-    public HashIndexStore(File dataFile) throws IOException {
-        this.in = new RandomAccessFile(dataFile, "r");
-        this.outFile = new FileOutputStream(dataFile, true);
+    public HashIndexStore(File activeFile) throws IOException {
+        this.in = new RandomAccessFile( activeFile, "r");
+        this.activeFile =  activeFile.getName();
+        this.outFile = new FileOutputStream( activeFile, true);
         this.out = new DataOutputStream(outFile);
-        this.index = new ConcurrentHashMap<String, Integer>();
+        this.index = new ConcurrentHashMap<String, IndexRecord>();
     }
 
     public static HashIndexStore buildFrom(File dataFile) throws EOFException, IOException {
-        int keyLength;
-        int valueLength;
-        int offset = 0;
-
-        FileInputStream fis = new FileInputStream(dataFile);
-        DataInputStream din = new DataInputStream(fis);
-
-        HashIndexStore store = new HashIndexStore(dataFile);
-        while (true) {
-            try {
-                keyLength = din.readInt();
-            } catch (EOFException _) {
-                return store;
+        final HashIndexStore store = new HashIndexStore(dataFile);
+        walkFile(dataFile, new IndexVisitor() {
+            public void visit(String key, IndexRecord record) throws IOException {
+                store.index.put(key, record);
             }
-            // TODO: instead of letting the EOFException get surfaced, decorate it with a better/more specific Exception
-
-            byte[] keyBuf = new byte[keyLength];
-            din.readFully(keyBuf);
-            offset += 4 + keyLength;
-
-            store.index.put(new String(keyBuf), offset);
-
-            valueLength = din.readInt();
-            offset += 4;
-
-            din.skipBytes(valueLength);
-            offset += valueLength;
-        }
+        });
+        return store;
     }
 
 
     public String get(String key) throws IOException {
-        Integer offset = index.get(key);
-        if (offset == null) {
+        IndexRecord record = index.get(key);
+        if (record == null) {
             return null;
         }
 
-        in.seek(offset);
+        in.seek(record.valueOffset);
 
-        // TODO: probably format this error better
-        int valueLength = in.readInt();
-        byte[] value = new byte[valueLength];
+        byte[] value = new byte[record.valueLength];
         in.readFully(value);
 
         return new String(value);
@@ -69,19 +48,66 @@ public class HashIndexStore implements Store, AutoCloseable {
     public void put(String key, String value) throws IOException {
         out.writeInt(key.length());
         out.write(key.getBytes());
-        offset += 4 + key.getBytes().length;
+        int valueLength = value.getBytes().length;
 
-        out.writeInt(value.length());
+        out.writeInt(valueLength);
         out.write(value.getBytes());
+        offset += 8 + key.getBytes().length;
 
-        index.put(key, offset);
+        index.put(key, new IndexRecord(this.activeFile, valueLength, offset));
 
-        offset += 4 + value.getBytes().length;
+        offset += valueLength;
     }
 
     public void close() throws Exception {
         in.close();
         outFile.close();
+    }
+
+    private static class IndexRecord {
+        String fileName;
+        int valueLength;
+        int valueOffset;
+
+        IndexRecord(String fileName, int valueLength, int valueOffset) {
+            this.fileName = fileName;
+            this.valueLength = valueLength;
+            this.valueOffset = valueOffset;
+        }
+    }
+
+    private static void walkFile(File dataFile, IndexVisitor visitor) throws IOException {
+        int keyLength;
+        int valueLength;
+        int offset = 0;
+
+        try (FileInputStream fis = new FileInputStream(dataFile)) {
+            DataInputStream din = new DataInputStream(fis);
+
+            while (true) {
+                try {
+                    keyLength = din.readInt();
+                } catch (EOFException _) {
+                    return;
+                }
+
+                byte[] keyBuf = new byte[keyLength];
+                din.readFully(keyBuf);
+                valueLength = din.readInt();
+                offset += 8 + keyLength;
+
+                visitor.visit(new String(keyBuf),
+                        new IndexRecord(dataFile.getName(), valueLength, offset));
+
+                din.skipBytes(valueLength);
+                offset += valueLength;
+            }
+
+        }
+    }
+
+    public static interface IndexVisitor {
+        public void visit(String key, IndexRecord record) throws IOException;
     }
 
     public static class CorruptedDatabaseFileException extends RuntimeException {
