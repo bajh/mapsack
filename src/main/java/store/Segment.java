@@ -4,7 +4,6 @@ import java.io.*;
 import java.util.Map;
 
 public class Segment {
-    int offset;
     File dataFile;
     RandomAccessFile reader;
 
@@ -57,6 +56,10 @@ public class Segment {
             }
 
         }
+    }
+
+    public String getFileName() {
+        return dataFile.getName();
     }
 
     public void close() throws Exception {
