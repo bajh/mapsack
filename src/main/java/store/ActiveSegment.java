@@ -18,13 +18,14 @@ public class ActiveSegment extends Segment {
     }
 
     public IndexRecord put(String key, String value) throws IOException {
+        writer.writeByte(0);
         writer.writeInt(key.length());
         writer.write(key.getBytes());
         int valueLength = value.getBytes().length;
 
         writer.writeInt(valueLength);
         writer.write(value.getBytes());
-        offset += 8 + key.getBytes().length;
+        offset += 9 + key.getBytes().length;
 
         IndexRecord record = new IndexRecord(dataFile.getName(),
                 valueLength, offset);
@@ -34,6 +35,12 @@ public class ActiveSegment extends Segment {
         return record;
     }
 
+    public void delete(String key) throws IOException {
+        writer.writeByte(1);
+        writer.writeInt(key.length());
+        writer.write(key.getBytes());
+        offset += 5 + key.getBytes().length;
+    }
 
     public void close() throws Exception {
         super.close();

@@ -32,23 +32,29 @@ public class DBServlet extends HttpServlet {
         if (keys == null || keys.length != 1) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             response.getWriter().println(gson.toJson(
-                    new ErrorResponse("exactly one key must be requested")));
+                    new ErrorResponse("exactly one key must be provided")));
             return;
         }
         String key = keys[0];
-        String value = store.get(key);
-        if (value == null) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().println(gson.toJson(
-                    new ErrorResponse("key " + key + " not found")));
-            return;
+        try {
+            String value = store.get(key);
+            if (value == null) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().println(gson.toJson(
+                        new ErrorResponse("key " + key + " not found")));
+                return;
+            }
+            response.setStatus(HttpServletResponse.SC_OK);
+            response.getWriter().println(gson.toJson(new GetResponse(key, value)));
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
         }
 
-        response.setStatus(HttpServletResponse.SC_OK);
-        response.getWriter().println(gson.toJson(new GetResponse(key, value)));
     }
 
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+
         response.setContentType("application/json");
 
         Set<Map.Entry<String, String[]>> query = request.getParameterMap().entrySet();
@@ -70,8 +76,31 @@ public class DBServlet extends HttpServlet {
             return;
         }
 
-        store.put(key, value);
+        try {
+            store.put(key, value);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
 
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.getWriter().println(gson.toJson(new SuccessResponse()));
+    }
+
+    protected void doDelete(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+
+        response.setContentType("application/json");
+
+        String[] keys = request.getParameterMap().get("key");
+
+        if (keys == null || keys.length != 1) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().println(gson.toJson(
+                    new ErrorResponse("exactly one key must be provided")));
+            return;
+        }
+        String key = keys[0];
+        store.delete(key);
         response.setStatus(HttpServletResponse.SC_OK);
         response.getWriter().println(gson.toJson(new SuccessResponse()));
     }

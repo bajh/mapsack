@@ -90,6 +90,11 @@ public class HashIndexStore implements Store, AutoCloseable {
         index.put(key, record);
     }
 
+    public void delete(String key) throws IOException {
+        activeSegment.delete(key);
+        index.remove(key);
+    }
+
     // compactSegments randomly chooses two inactive segments to compact and does
     // so
     public void doCompaction() throws Exception {

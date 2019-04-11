@@ -16,6 +16,10 @@ public class Segment {
         Segment segment = this;
         walk(new Segment.Visitor() {
             public void visit(String key, IndexRecord record) throws IOException {
+                if (record == null) {
+                    index.remove(key);
+                    return;
+                }
                 index.put(key, record);
             }
         });
@@ -28,7 +32,12 @@ public class Segment {
         return new String(value);
     }
 
-    private void walk(Segment.Visitor visitor) throws IOException {
+    boolean isTombstoneBitSet(byte recordMeta) {
+        return (recordMeta & 0x01) > 0;
+    }
+
+    public void walk(Segment.Visitor visitor) throws IOException {
+        byte meta;
         int keyLength;
         int valueLength;
         int offset = 0;
@@ -38,15 +47,23 @@ public class Segment {
 
             while (true) {
                 try {
-                    keyLength = din.readInt();
+                    meta = din.readByte();
                 } catch (EOFException _) {
                     return;
                 }
 
+                keyLength = din.readInt();
+
                 byte[] keyBuf = new byte[keyLength];
                 din.readFully(keyBuf);
+                offset += 5 + keyLength;
+                if (isTombstoneBitSet(meta)) {
+                    visitor.visit(new String(keyBuf), null);
+                    return;
+                }
+
                 valueLength = din.readInt();
-                offset += 8 + keyLength;
+                offset += 4;
 
                 visitor.visit(new String(keyBuf),
                     new IndexRecord(dataFile.getName(), valueLength, offset));
