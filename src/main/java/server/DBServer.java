@@ -15,7 +15,7 @@ public class DBServer {
         this.store = store;
     }
 
-    public void start() throws Exception {
+    public void run() throws Exception {
         server = new Server();
         ServerConnector connector = new ServerConnector(server);
         connector.setPort(8090);
@@ -29,9 +29,12 @@ public class DBServer {
         servletHandler.addServletWithMapping(new ServletHolder(dbServlet), "/");
 
         server.start();
+        server.join();
     }
 
     public void stop() throws Exception {
         server.stop();
     }
+
+
 }

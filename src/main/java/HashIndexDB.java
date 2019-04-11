@@ -1,6 +1,5 @@
 import server.DBServer;
 import store.HashIndexStore;
-import store.Store;
 
 import java.io.File;
 
@@ -14,8 +13,9 @@ public class HashIndexDB {
         try (HashIndexStore store = new HashIndexStore(dataDir)) {
             store.loadIndex();
             DBServer server = new DBServer(store);
-            server.start();
+            server.run();
         }
 
     }
+
 }
