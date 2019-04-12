@@ -1,9 +1,8 @@
 package store;
 
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.util.zip.CRC32;
 
 public class ActiveSegment extends Segment {
     int offset;
@@ -18,28 +17,46 @@ public class ActiveSegment extends Segment {
     }
 
     public IndexRecord put(String key, String value) throws IOException {
-        writer.writeByte(0);
-        writer.writeInt(key.length());
-        writer.write(key.getBytes());
+
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        DataOutputStream bufWriter = new DataOutputStream(buf);
+
+        bufWriter.writeByte(0);
+        bufWriter.writeInt(key.length());
         int valueLength = value.getBytes().length;
+        bufWriter.writeInt(valueLength);
+        bufWriter.write(key.getBytes());
+        bufWriter.write(value.getBytes());
 
-        writer.writeInt(valueLength);
-        writer.write(value.getBytes());
-        offset += 9 + key.getBytes().length;
+        // TODO: make this not a magic number: it's the metadata length (1) + key length (4) + value length (4) + crc length (8)
+        int valueOffset = offset + 17 + key.getBytes().length;
 
-        IndexRecord record = new IndexRecord(dataFile.getName(),
-                valueLength, offset);
+        CRC32 crc = new CRC32();
+        crc.update(buf.toByteArray());
+        writer.writeLong(crc.getValue());
+        buf.writeTo(writer);
 
-        offset += valueLength;
+        offset += valueOffset + valueLength;
 
-        return record;
+        return new IndexRecord(dataFile.getName(), valueLength, valueOffset);
     }
 
     public void delete(String key) throws IOException {
-        writer.writeByte(1);
-        writer.writeInt(key.length());
-        writer.write(key.getBytes());
-        offset += 5 + key.getBytes().length;
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        DataOutputStream bufWriter = new DataOutputStream(buf);
+
+        bufWriter.writeByte(1);
+        bufWriter.writeInt(key.length());
+        bufWriter.writeInt(0);
+        bufWriter.write(key.getBytes());
+
+        CRC32 crc = new CRC32();
+        crc.update(buf.toByteArray());
+
+        writer.writeLong(crc.getValue());
+        buf.writeTo(writer);
+
+        offset += 17 + key.getBytes().length;
     }
 
     public void close() throws Exception {

@@ -2,15 +2,16 @@ import org.junit.Rule;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.migrationsupport.rules.EnableRuleMigrationSupport;
 import org.junit.rules.TemporaryFolder;
-import store.HashIndexStore;
-import store.IndexRecord;
-import store.Segment;
-import store.Store;
+import store.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.file.Paths;
+import java.util.RandomAccess;
 
 @EnableRuleMigrationSupport
 public class TestHashIndexStore {
@@ -31,7 +32,9 @@ public class TestHashIndexStore {
         keyTest1.evaluate(store);
         keyTest2.evaluate(store);
 
+        store.close();
         Thread.sleep(1);
+
         store = new HashIndexStore(dataDir);
         store.loadIndex();
         KeyTest keyTest3 = new KeyTest("key3", "hello from segment 2");
@@ -40,7 +43,9 @@ public class TestHashIndexStore {
         keyTest2.evaluate(store);
         keyTest3.evaluate(store);
 
+        store.close();
         Thread.sleep(1);
+
         store = new HashIndexStore(dataDir);
         store.loadIndex();
         KeyTest keyTest4 = new KeyTest("key4", "hello from segment 3");
@@ -63,7 +68,9 @@ public class TestHashIndexStore {
         KeyTest keyTest2 = new KeyTest("key2", "value 2");
         store.put(keyTest1.key, keyTest1.value);
         store.put(keyTest2.key, keyTest2.value);
+
         store.close();
+        Thread.sleep(1);
 
         store = new HashIndexStore(dataDir);
         store.loadIndex();
@@ -71,7 +78,9 @@ public class TestHashIndexStore {
         store.put(keyTest1.key, keyTest1.value);
         KeyTest keyTest3 = new KeyTest("key3", "value 3");
         store.put(keyTest3.key, keyTest3.value);
+
         store.close();
+        Thread.sleep(1);
 
         File[] segments = dataDir.listFiles();
 
@@ -106,7 +115,9 @@ public class TestHashIndexStore {
         assertEquals(value1, null, "expected deleted key to be not found");
         String value2 = store.get(keyTest2.key);
         keyTest2.evaluate(store);
+
         store.close();
+        Thread.sleep(1);
 
         // After reloading data, record should still be gone
         store = new HashIndexStore(dataDir);
@@ -123,6 +134,32 @@ public class TestHashIndexStore {
             public void visit(String key, IndexRecord record) throws IOException {
                 if (key.equals(keyTest1.key)) {
                     assertEquals(false, true, "deleted key should not appear in compacted file");
+                }
+            }
+        });
+    }
+
+    @Test
+    public void testCorruptRecord() throws Exception {
+        File dataDir = tempFolder.newFolder();
+        dataDir.mkdir();
+        File corruptFile = new File(Paths.get(dataDir.getAbsolutePath(), "corrupt").toString());
+        corruptFile.createNewFile();
+        ActiveSegment segment = new ActiveSegment(corruptFile);
+
+        KeyTest keyTest1 = new KeyTest("key 1", "val 1");
+        KeyTest keyTest2 = new KeyTest("key 2", "val 2 val 2 val 2 val 2");
+        segment.put(keyTest1.key, keyTest1.value);
+        segment.put(keyTest2.key, keyTest2.value);
+
+        RandomAccessFile writer = new RandomAccessFile(corruptFile, "rw");
+        writer.seek(corruptFile.length() - 8);
+        writer.write("}:)".getBytes());
+
+        segment.walk(new Segment.Visitor() {
+            public void visit(String key, IndexRecord record) throws IOException {
+                if (key == keyTest2.key) {
+                    fail("expected corrupted key to be dropped from segment");
                 }
             }
         });

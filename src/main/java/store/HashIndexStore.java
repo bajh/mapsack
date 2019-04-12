@@ -64,7 +64,12 @@ public class HashIndexStore implements Store, AutoCloseable {
     }
 
     public void loadIndex() throws IOException {
-        File[] segments = dataDir.listFiles();
+        File[] segments = dataDir.listFiles(new FileFilter() {
+            @Override
+            public boolean accept(File pathname) {
+                return pathname.isFile();
+            }
+        });
         HashIndexStore.sortSegments(segments);
 
         // load all the segments in order, then create a new file for this segment

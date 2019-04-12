@@ -2,6 +2,7 @@ package store;
 
 import java.io.*;
 import java.util.Map;
+import java.util.zip.CRC32;
 
 public class Segment {
     File dataFile;
@@ -46,30 +47,55 @@ public class Segment {
             DataInputStream din = new DataInputStream(fis);
 
             while (true) {
+                long crcVal;
                 try {
-                    meta = din.readByte();
+                    crcVal = din.readLong();
                 } catch (EOFException _) {
                     return;
                 }
 
+                // TODO: we only actually need to check the CRC of the last record in the file, but not sure how to do that eloquently rn
+
+                ByteArrayOutputStream crcBuf = new ByteArrayOutputStream();
+                DataOutputStream crcBufWriter = new DataOutputStream(crcBuf);
+
+                meta = din.readByte();
                 keyLength = din.readInt();
+                valueLength = din.readInt();
+
+                crcBufWriter.writeByte(meta);
+                crcBufWriter.writeInt(keyLength);
+                crcBufWriter.writeInt(valueLength);
 
                 byte[] keyBuf = new byte[keyLength];
                 din.readFully(keyBuf);
-                offset += 5 + keyLength;
+                crcBufWriter.write(keyBuf);
+                // TODO: don't have this magic number here
+                // crc 8 + meta 1 + keylen 4 + vallen 4
+                int valueOffset = 17 + keyLength + offset;
+
+                byte[] valueBuf = new byte[valueLength];
+                din.readFully(valueBuf);
+                // TODO: I don't think I need to copy to this intermediate buffer, but not sure easier way atm
+                crcBufWriter.write(valueBuf);
+
+                offset = valueOffset + valueLength;
+
+                CRC32 crc = new CRC32();
+                crc.update(crcBuf.toByteArray());
+                if (crc.getValue() != crcVal) {
+                    // TODO: I'm not sure how this should actually be handled, here the record just gets unceremoniously dropped...
+                    System.err.println("invalid CRC val");
+                    return;
+                }
+
                 if (isTombstoneBitSet(meta)) {
                     visitor.visit(new String(keyBuf), null);
                     return;
                 }
-
-                valueLength = din.readInt();
-                offset += 4;
-
                 visitor.visit(new String(keyBuf),
-                    new IndexRecord(dataFile.getName(), valueLength, offset));
+                    new IndexRecord(dataFile.getName(), valueLength, valueOffset));
 
-                din.skipBytes(valueLength);
-                offset += valueLength;
             }
 
         }
