@@ -1,11 +1,11 @@
 package store;
 
 import java.io.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.CRC32;
 
 public class ActiveSegment extends Segment {
-    // TODO: replace this with AtomicInteger
-    private int offset;
+    private AtomicInteger offset = new AtomicInteger(0);
 
     FileOutputStream outputStream;
     DataOutputStream writer;
@@ -14,6 +14,18 @@ public class ActiveSegment extends Segment {
         super(dataFile);
         this.outputStream = new FileOutputStream(dataFile, true);
         this.writer = new DataOutputStream(outputStream);
+    }
+
+    private synchronized void writeRecord(CRC32 crc, ByteArrayOutputStream buf, int offsetChange) throws IOException {
+        writer.writeLong(crc.getValue());
+        buf.writeTo(writer);
+        while (true) {
+            int lastOffset = offset.get();
+            int nextOffset = lastOffset + offsetChange;
+            if (offset.compareAndSet(lastOffset, nextOffset)) {
+                return;
+            }
+        }
     }
 
     public IndexRecord put(String key, String value) throws IOException {
@@ -29,14 +41,12 @@ public class ActiveSegment extends Segment {
         bufWriter.write(value.getBytes());
 
         // TODO: make this not a magic number: it's the metadata length (1) + key length (4) + value length (4) + crc length (8)
-        int valueOffset = offset + 17 + key.getBytes().length;
+        int offsetChange = 17 + key.getBytes().length;
+        int valueOffset = offset.get() + offsetChange;
 
         CRC32 crc = new CRC32();
         crc.update(buf.toByteArray());
-        writer.writeLong(crc.getValue());
-        buf.writeTo(writer);
-
-        offset += valueOffset + valueLength;
+        writeRecord(crc, buf, offsetChange + valueLength);
 
         return new IndexRecord(dataFile.getName(), valueLength, valueOffset);
     }
@@ -53,14 +63,11 @@ public class ActiveSegment extends Segment {
         CRC32 crc = new CRC32();
         crc.update(buf.toByteArray());
 
-        writer.writeLong(crc.getValue());
-        buf.writeTo(writer);
-
-        offset += 17 + key.getBytes().length;
+        writeRecord(crc, buf, 17 + key.getBytes().length);
     }
 
     public int getSize() {
-        return offset;
+        return offset.get();
     }
 
     public void close() throws IOException {

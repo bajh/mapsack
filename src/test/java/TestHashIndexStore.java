@@ -172,13 +172,16 @@ public class TestHashIndexStore {
         store.put("key1", "val1");
         File[] segments = dataDir.listFiles();
         if (segments.length != 1) {
-            fail("expected one segment files to exist until file size threshhold reached, found " + segments.length);
+            fail("expected one segment files to exist until file size threshold reached, found " + segments.length);
         }
-        store.put("key2", "val111111111111111111111111111111111111111");
+        Thread.sleep(1);
+
+        store.put("key2", "val2222222222222222222222222");
 
         segments = dataDir.listFiles();
         if (segments.length != 2){
-            fail("expected two segment files to exist after segment switch period, got " + segments.length);
+
+            fail("expected two segment files to exist after file size threshold reached, got " + segments.length);
         }
     }
 
