@@ -11,7 +11,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Paths;
-import java.util.RandomAccess;
 
 @EnableRuleMigrationSupport
 public class TestHashIndexStore {
@@ -142,7 +141,6 @@ public class TestHashIndexStore {
     @Test
     public void testCorruptRecord() throws Exception {
         File dataDir = tempFolder.newFolder();
-        dataDir.mkdir();
         File corruptFile = new File(Paths.get(dataDir.getAbsolutePath(), "corrupt").toString());
         corruptFile.createNewFile();
         ActiveSegment segment = new ActiveSegment(corruptFile);
@@ -163,6 +161,48 @@ public class TestHashIndexStore {
                 }
             }
         });
+    }
+
+    @Test
+    public void testTriggerSegmentSwitch() throws Exception {
+        File dataDir = tempFolder.newFolder();
+
+        HashIndexStore store = new HashIndexStore(dataDir);
+        store.setMaximumFileSize(30);
+        store.put("key1", "val1");
+        File[] segments = dataDir.listFiles();
+        if (segments.length != 1) {
+            fail("expected one segment files to exist until file size threshhold reached, found " + segments.length);
+        }
+        store.put("key2", "val111111111111111111111111111111111111111");
+
+        segments = dataDir.listFiles();
+        if (segments.length != 2){
+            fail("expected two segment files to exist after segment switch period, got " + segments.length);
+        }
+    }
+
+    @Test
+    public void testScheduledCompaction() throws Exception {
+        File dataDir = tempFolder.newFolder();
+
+        HashIndexStore store = new HashIndexStore(dataDir);
+        store.put("key1", "val1");
+        store.close();
+
+        store = new HashIndexStore(dataDir);
+        store.put("key2", "val2");
+        store.close();
+
+        store = new HashIndexStore(dataDir);
+        store.setCompactionPeriod(50);
+        Thread.sleep(60);
+
+        File[] segments = dataDir.listFiles();
+        if (segments.length != 2){
+            fail("expected two segment files to exist after compaction performed, got " + segments.length);
+        }
+
     }
 
     private class KeyTest {

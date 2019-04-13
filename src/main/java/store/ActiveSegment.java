@@ -1,11 +1,11 @@
 package store;
 
 import java.io.*;
-import java.nio.ByteBuffer;
 import java.util.zip.CRC32;
 
 public class ActiveSegment extends Segment {
-    int offset;
+    // TODO: replace this with AtomicInteger
+    private int offset;
 
     FileOutputStream outputStream;
     DataOutputStream writer;
@@ -59,7 +59,11 @@ public class ActiveSegment extends Segment {
         offset += 17 + key.getBytes().length;
     }
 
-    public void close() throws Exception {
+    public int getSize() {
+        return offset;
+    }
+
+    public void close() throws IOException {
         super.close();
         outputStream.close();
     }

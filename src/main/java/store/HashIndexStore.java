@@ -11,12 +11,31 @@ public class HashIndexStore implements Store, AutoCloseable {
     // segment v the segment k was compacted to.
     Map<String, String> compactionLog = new ConcurrentHashMap<String, String>();
     File dataDir;
-    ActiveSegment activeSegment;
+    private ActiveSegment activeSegment;
 
-    public HashIndexStore(File dataDir) throws IOException {
+    private int maximumFileSize = 1024 * 1000;
+    private long compactionPeriod = 1000L * 60L * 30L;
+
+    public HashIndexStore(File dataDir) throws Exception {
         this.dataDir = dataDir;
-        activeSegment = new ActiveSegment(newSegmentFile());
+        this.activeSegment = new ActiveSegment(newSegmentFile());
         this.index = new ConcurrentHashMap<String, IndexRecord>();
+    }
+
+    public void scheduleCompaction() {
+        TimerTask switchSegment = new TimerTask() {
+            public void run() {
+                try {
+                    doCompaction();
+                } catch (Exception e) {
+                    System.err.println("could not perform compaction");
+                    e.printStackTrace();
+                }
+            }
+        };
+
+        Timer timer = new Timer();
+        timer.scheduleAtFixedRate(switchSegment, compactionPeriod, compactionPeriod);
     }
 
     public File getSegmentFile(String fileName) {
@@ -93,6 +112,9 @@ public class HashIndexStore implements Store, AutoCloseable {
         IndexRecord record = activeSegment.put(key, value);
 
         index.put(key, record);
+        if (activeSegment.getSize() > maximumFileSize) {
+            setNewActiveSegment();
+        }
     }
 
     public void delete(String key) throws IOException {
@@ -166,8 +188,22 @@ public class HashIndexStore implements Store, AutoCloseable {
         // TODO: dumpHintFile(index, segmentFile2);
     }
 
-    public void close() throws Exception {
+    private synchronized void setNewActiveSegment() throws IOException {
+        File segmentFile = newSegmentFile();
+        ActiveSegment segment = new ActiveSegment(segmentFile);
+        this.activeSegment.close();
+        this.activeSegment = segment;
+    }
+
+    public void close() throws IOException {
         activeSegment.close();
     }
 
+    public void setCompactionPeriod(long segmentSwitchPeriod) {
+        this.compactionPeriod = segmentSwitchPeriod;
+    }
+
+    public void setMaximumFileSize(int maximumFileSize){
+        this.maximumFileSize = maximumFileSize;
+    }
 }

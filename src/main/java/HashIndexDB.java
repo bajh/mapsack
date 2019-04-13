@@ -12,6 +12,7 @@ public class HashIndexDB {
 
         try (HashIndexStore store = new HashIndexStore(dataDir)) {
             store.loadIndex();
+            store.scheduleCompaction();
             DBServer server = new DBServer(store);
             server.run();
         }

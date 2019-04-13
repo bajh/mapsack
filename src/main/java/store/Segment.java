@@ -105,7 +105,7 @@ public class Segment {
         return dataFile.getName();
     }
 
-    public void close() throws Exception {
+    public void close() throws IOException {
         reader.close();
     }
 
