@@ -219,7 +219,7 @@ public class TestHashIndexStore {
         if (segments.length != 2){
             fail("expected two segment files to exist after compaction performed, got " + segments.length);
         }
-
+        store.close();
     }
 
     private class KeyTest {

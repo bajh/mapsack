@@ -12,6 +12,7 @@ public class HashIndexStore implements Store, AutoCloseable {
     Map<String, String> compactionLog = new ConcurrentHashMap<String, String>();
     File dataDir;
     private ActiveSegment activeSegment;
+    TimerTask switchSegmentTask;
 
     private int maximumFileSize = 1024 * 1000;
     private long compactionPeriod = 1000L * 60L * 30L;
@@ -23,7 +24,7 @@ public class HashIndexStore implements Store, AutoCloseable {
     }
 
     public void scheduleCompaction() {
-        TimerTask switchSegment = new TimerTask() {
+        switchSegmentTask = new TimerTask() {
             public void run() {
                 try {
                     doCompaction();
@@ -35,7 +36,7 @@ public class HashIndexStore implements Store, AutoCloseable {
         };
 
         Timer timer = new Timer();
-        timer.scheduleAtFixedRate(switchSegment, compactionPeriod, compactionPeriod);
+        timer.scheduleAtFixedRate(switchSegmentTask, compactionPeriod, compactionPeriod);
     }
 
     public File getSegmentFile(String fileName) {
@@ -203,6 +204,9 @@ public class HashIndexStore implements Store, AutoCloseable {
 
     public void close() throws IOException {
         activeSegment.close();
+        if (switchSegmentTask != null) {
+            switchSegmentTask.cancel();
+        }
     }
 
     public void setCompactionPeriod(long segmentSwitchPeriod) {
