@@ -122,20 +122,27 @@ public class HashIndexStore implements Store, AutoCloseable {
         index.remove(key);
     }
 
-    // compactSegments randomly chooses two inactive segments to compact and does
-    // so
+    // doCompaction compacts two segments at a time until they've all been compacted
     public void doCompaction() throws Exception {
         File[] segmentFiles = dataDir.listFiles(new FilenameFilter() {
             public boolean accept(File dir, String name) {
                 return !name.equals(activeSegment.getFileName());
             }
         });
+        HashIndexStore.sortSegments(segmentFiles);
 
-        Random rand = new Random();
-        File segment1 = segmentFiles[rand.nextInt(segmentFiles.length)];
-        File segment2 = segmentFiles[rand.nextInt(segmentFiles.length)];
+        if (segmentFiles.length > 1) {
+            File leftMergeFile = null;
+            for (File segmentFile : segmentFiles) {
+                if (leftMergeFile == null) {
+                    leftMergeFile = segmentFile;
+                    continue;
+                }
 
-        compactSegments(segment1, segment2);
+                leftMergeFile = compactSegments(leftMergeFile, segmentFile);
+            }
+        }
+
     }
 
     // TODO: this function needs to be defensive against files that are named wrongly
@@ -151,21 +158,19 @@ public class HashIndexStore implements Store, AutoCloseable {
         return getSegmentFile(Long.toString(newFileTimestamp) + "-" + Integer.toString(compactedFileVersion));
     }
 
-    public void compactSegments(File segmentFile1, File segmentFile2) throws IOException {
+    public File compactSegments(File oldSegment, File newSegment) throws IOException {
         Map<String, IndexRecord> index = new HashMap<String, IndexRecord>();
 //        Map<String, IndexRecord> hintIndex = new HashMap<String, IndexRecord>();
         Map<String, Segment> segments = new HashMap<String, Segment>();
-        File[] segmentFiles = new File[]{segmentFile1, segmentFile2};
-        HashIndexStore.sortSegments(segmentFiles);
 
-        Segment segment1 = new Segment(segmentFiles[0]);
-        Segment segment2 = new Segment(segmentFiles[1]);
+        Segment segment1 = new Segment(oldSegment);
+        Segment segment2 = new Segment(newSegment);
         segments.put(segment1.dataFile.getName(), segment1);
         segments.put(segment2.dataFile.getName(), segment2);
         segment1.load(index);
         segment2.load(index);
 
-        File compactedFile = compactedSegmentFile(segmentFile1, segmentFile2);
+        File compactedFile = compactedSegmentFile(oldSegment, newSegment);
         compactedFile.createNewFile();
 
         ActiveSegment outputSegment = new ActiveSegment(compactedFile);
@@ -179,13 +184,14 @@ public class HashIndexStore implements Store, AutoCloseable {
             //hintIndex.put(key, newSegmentRecord);
         }
 
-        compactionLog.put(segmentFile1.getName(), outputSegment.getFileName());
-        compactionLog.put(segmentFile2.getName(), outputSegment.getFileName());
+        compactionLog.put(oldSegment.getName(), outputSegment.getFileName());
+        compactionLog.put(newSegment.getName(), outputSegment.getFileName());
 
-        segmentFile1.delete();
-        segmentFile2.delete();
+        oldSegment.delete();
+        newSegment.delete();
 
         // TODO: dumpHintFile(index, segmentFile2);
+        return compactedFile;
     }
 
     private synchronized void setNewActiveSegment() throws IOException {

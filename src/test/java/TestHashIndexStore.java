@@ -82,6 +82,7 @@ public class TestHashIndexStore {
         Thread.sleep(1);
 
         File[] segments = dataDir.listFiles();
+        HashIndexStore.sortSegments(segments);
 
         store.compactSegments(segments[0], segments[1]);
 
@@ -192,14 +193,27 @@ public class TestHashIndexStore {
         HashIndexStore store = new HashIndexStore(dataDir);
         store.put("key1", "val1");
         store.close();
+        Thread.sleep(1);
 
         store = new HashIndexStore(dataDir);
         store.put("key2", "val2");
         store.close();
+        Thread.sleep(1);
+
+        store = new HashIndexStore(dataDir);
+        store.put("key3", "val3");
+        store.close();
+        Thread.sleep(1);
+
+        store = new HashIndexStore(dataDir);
+        store.put("key4", "val4");
+        store.close();
+        Thread.sleep(1);
 
         store = new HashIndexStore(dataDir);
         store.setCompactionPeriod(50);
-        Thread.sleep(60);
+        store.scheduleCompaction();
+        Thread.sleep(80);
 
         File[] segments = dataDir.listFiles();
         if (segments.length != 2){
