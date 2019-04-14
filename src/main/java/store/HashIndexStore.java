@@ -2,14 +2,13 @@ package store;
 
 import java.io.*;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class HashIndexStore implements Store, AutoCloseable {
-    Map<String, IndexRecord> index;
-    // compactionLog holds a lookup table of k -> v that allows us to find out what
-    // segment v the segment k was compacted to.
-    Map<String, String> compactionLog = new ConcurrentHashMap<String, String>();
+    private Map<String, IndexRecord> index;
     File dataDir;
     private ActiveSegment activeSegment;
     TimerTask switchSegmentTask;
@@ -20,7 +19,7 @@ public class HashIndexStore implements Store, AutoCloseable {
     public HashIndexStore(File dataDir) throws Exception {
         this.dataDir = dataDir;
         this.activeSegment = new ActiveSegment(newSegmentFile());
-        this.index = new ConcurrentHashMap<String, IndexRecord>();
+        this.setIndex(new ConcurrentHashMap<String, IndexRecord>());
     }
 
     public void scheduleCompaction() {
@@ -40,16 +39,6 @@ public class HashIndexStore implements Store, AutoCloseable {
     }
 
     public File getSegmentFile(String fileName) {
-        String compactedFileName = compactionLog.get(fileName);
-
-        // TODO: feels like there should be a better way to do this, though.
-        // At the very least, if a segment is compacted multiple times we should
-        // clean up the compactionLog so that we're guaranteed to only have to look
-        // in it once for each segment. Then there's also the memory usage growth...
-        if (compactedFileName != null) {
-            return getSegmentFile(compactedFileName);
-        }
-
         return Paths.get(dataDir.getAbsolutePath(), fileName).toFile();
     }
 
@@ -87,16 +76,33 @@ public class HashIndexStore implements Store, AutoCloseable {
         File[] segments = dataDir.listFiles(new FileFilter() {
             @Override
             public boolean accept(File pathname) {
-                return pathname.isFile();
+                return pathname.isFile() && !pathname.getName().endsWith("hint");
             }
         });
         HashIndexStore.sortSegments(segments);
 
         // load all the segments in order, then create a new file for this segment
+        LocalTime loadStartTime = LocalTime.now();
+
         for (File segmentFile : segments) {
+            try {
+                HintFile hint = new HintFile(new File(segmentFile.getAbsolutePath() + ".hint"));
+                if (hint.load(index)) {
+                    System.out.println("loaded segment file " + segmentFile.getName() + " from hint file");
+                    continue;
+                }
+                System.out.println("loaded segment file " + segmentFile.getName() + " from index file");
+            } catch (IOException e) {
+                System.err.println("unable to load hint for segment " + segmentFile.getName() + ". Using data file");
+                e.printStackTrace();
+            }
+
             Segment segment = new Segment(segmentFile);
             segment.load(index);
         }
+        Duration loadTime = Duration.between(loadStartTime, LocalTime.now());
+
+        System.out.printf("loaded segments in %s\n", loadTime);
     }
 
     public String get(String key) throws IOException {
@@ -127,7 +133,7 @@ public class HashIndexStore implements Store, AutoCloseable {
     public void doCompaction() throws Exception {
         File[] segmentFiles = dataDir.listFiles(new FilenameFilter() {
             public boolean accept(File dir, String name) {
-                return !name.equals(activeSegment.getFileName());
+                return !name.equals(activeSegment.getFileName()) && !name.endsWith("hint");
             }
         });
         HashIndexStore.sortSegments(segmentFiles);
@@ -161,7 +167,7 @@ public class HashIndexStore implements Store, AutoCloseable {
 
     public File compactSegments(File oldSegment, File newSegment) throws IOException {
         Map<String, IndexRecord> index = new HashMap<String, IndexRecord>();
-//        Map<String, IndexRecord> hintIndex = new HashMap<String, IndexRecord>();
+        Map<String, IndexRecord> hintIndex = new HashMap<String, IndexRecord>();
         Map<String, Segment> segments = new HashMap<String, Segment>();
 
         Segment segment1 = new Segment(oldSegment);
@@ -182,16 +188,27 @@ public class HashIndexStore implements Store, AutoCloseable {
 
             String key = (String) entry.getKey();
             IndexRecord newSegmentRecord = outputSegment.put(key, value);
-            //hintIndex.put(key, newSegmentRecord);
+            hintIndex.put(key, newSegmentRecord);
         }
 
-        compactionLog.put(oldSegment.getName(), outputSegment.getFileName());
-        compactionLog.put(newSegment.getName(), outputSegment.getFileName());
+        // update the segment file names offset map - this seems expensive, not sure if there's a better way to do this
+        for (Map.Entry entry : hintIndex.entrySet()) {
+            IndexRecord record = this.index.get(entry.getKey());
+            if (record != null) {
+                IndexRecord newRecord = (IndexRecord) entry.getValue();
+                record.mergeWith(newRecord);
+            }
+        }
 
         oldSegment.delete();
         newSegment.delete();
 
-        // TODO: dumpHintFile(index, segmentFile2);
+        HintFile hintFile = new HintFile(new File(compactedFile.getAbsolutePath() + ".hint"), hintIndex);
+        hintFile.save();
+        // delete old hint files if they exist
+        File oldHintFile = new File(oldSegment.getAbsolutePath() + ".hint");
+        oldHintFile.delete();
+
         return compactedFile;
     }
 
@@ -215,5 +232,9 @@ public class HashIndexStore implements Store, AutoCloseable {
 
     public void setMaximumFileSize(int maximumFileSize){
         this.maximumFileSize = maximumFileSize;
+    }
+
+    public void setIndex(Map<String, IndexRecord> index) {
+        this.index = index;
     }
 }

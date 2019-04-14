@@ -34,7 +34,7 @@ public class ActiveSegment extends Segment {
         DataOutputStream bufWriter = new DataOutputStream(buf);
 
         bufWriter.writeByte(0);
-        bufWriter.writeInt(key.length());
+        bufWriter.writeInt(key.getBytes().length);
         int valueLength = value.getBytes().length;
         bufWriter.writeInt(valueLength);
         bufWriter.write(key.getBytes());

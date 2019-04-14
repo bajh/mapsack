@@ -10,4 +10,9 @@ public class IndexRecord {
         this.valueLength = valueLength;
         this.valueOffset = valueOffset;
     }
+
+    public synchronized void mergeWith(IndexRecord otherRecord) {
+        this.fileName = otherRecord.fileName;
+        this.valueOffset = otherRecord.valueOffset;
+    }
 }
