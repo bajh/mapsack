@@ -16,6 +16,8 @@ public class HashIndexStore implements Store, AutoCloseable {
     private int maximumFileSize = 1024 * 1000;
     private long compactionPeriod = 1000L * 60L * 30L;
 
+    private Map<String, Segment>  segments = new HashMap<String, Segment>();
+
     public HashIndexStore(File dataDir) throws Exception {
         this.dataDir = dataDir;
         this.activeSegment = new ActiveSegment(newSegmentFile());
@@ -72,6 +74,19 @@ public class HashIndexStore implements Store, AutoCloseable {
         });
     }
 
+    private Segment getSegment(String segmentFile) throws IOException {
+        if (segments.containsKey(segmentFile)) {
+            return segments.get(segmentFile);
+        }
+        Segment segment = new Segment(getSegmentFile(segmentFile));
+        segments.put(segmentFile, segment);
+        return segment;
+    }
+
+    private Segment getSegment(File segmentFile) throws IOException {
+        return getSegment(segmentFile.getName());
+    }
+
     public void loadIndex() throws IOException {
         File[] segments = dataDir.listFiles(new FileFilter() {
             @Override
@@ -97,7 +112,7 @@ public class HashIndexStore implements Store, AutoCloseable {
                 e.printStackTrace();
             }
 
-            Segment segment = new Segment(segmentFile);
+            Segment segment = getSegment(segmentFile);
             segment.load(index);
         }
         Duration loadTime = Duration.between(loadStartTime, LocalTime.now());
@@ -112,7 +127,7 @@ public class HashIndexStore implements Store, AutoCloseable {
         }
 
         // TODO: probably have a cache of the segments that exist?
-        return new Segment(getSegmentFile(record.fileName)).get(record);
+        return getSegment(record.fileName).get(record);
     }
 
     public void put(String key, String value) throws IOException {
@@ -129,14 +144,22 @@ public class HashIndexStore implements Store, AutoCloseable {
         index.remove(key);
     }
 
-    // doCompaction compacts two segments at a time until they've all been compacted
-    public void doCompaction() throws Exception {
+    private File[] getSegmentFiles(boolean includeActive) throws IOException {
         File[] segmentFiles = dataDir.listFiles(new FilenameFilter() {
             public boolean accept(File dir, String name) {
+                if (includeActive) {
+                    return !name.endsWith("hint");
+                }
                 return !name.equals(activeSegment.getFileName()) && !name.endsWith("hint");
             }
         });
         HashIndexStore.sortSegments(segmentFiles);
+        return segmentFiles;
+    }
+
+    // doCompaction compacts two segments at a time until they've all been compacted
+    public void doCompaction() throws Exception {
+        File[] segmentFiles = getSegmentFiles(false);
 
         if (segmentFiles.length > 1) {
             File leftMergeFile = null;
@@ -170,8 +193,8 @@ public class HashIndexStore implements Store, AutoCloseable {
         Map<String, IndexRecord> hintIndex = new HashMap<String, IndexRecord>();
         Map<String, Segment> segments = new HashMap<String, Segment>();
 
-        Segment segment1 = new Segment(oldSegment);
-        Segment segment2 = new Segment(newSegment);
+        Segment segment1 = getSegment(oldSegment);
+        Segment segment2 = getSegment(newSegment);
         segments.put(segment1.dataFile.getName(), segment1);
         segments.put(segment2.dataFile.getName(), segment2);
         segment1.load(index);
@@ -223,6 +246,9 @@ public class HashIndexStore implements Store, AutoCloseable {
         activeSegment.close();
         if (switchSegmentTask != null) {
             switchSegmentTask.cancel();
+        }
+        for (Segment segment : segments.values()) {
+            segment.close();
         }
     }
 

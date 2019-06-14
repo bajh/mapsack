@@ -54,7 +54,7 @@ public class HintFile {
 
                 try {
                     keyLength = reader.readInt();
-                } catch (EOFException _) {
+                } catch (EOFException e) {
                     if (crc.getValue() != crcValue) {
                         System.err.println("error loading hint file " + file.getName() + ": CRC does not match");
                         return false;
